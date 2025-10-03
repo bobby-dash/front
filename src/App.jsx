@@ -78,6 +78,13 @@ const SendIcon = (props) => (
         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
     </svg>
 );
+const MenuIcon = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="3" y1="12" x2="21" y2="12"></line>
+    <line x1="3" y1="6" x2="21" y2="6"></line>
+    <line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+);
 
 // --- LocalStorage Hook ---
 function useStickyState(defaultValue, key) {
@@ -103,6 +110,7 @@ const initialTeams = [
 ];
 const initialPractices = [];
 const initialLeagues = [];
+const initialMatches = [];
 const initialNotifications = [];
 const initialActivityLog = [
     { id: 1, message: 'Welcome to the GLS University Sports Hub!'}
@@ -118,6 +126,7 @@ const AppProvider = ({ children }) => {
   const [practices, setPractices] = useStickyState(initialPractices, 'glsPractices');
   const [teams, setTeams] = useStickyState(initialTeams, 'glsTeams');
   const [leagues, setLeagues] = useStickyState(initialLeagues, 'glsLeagues');
+  const [matches, setMatches] = useStickyState(initialMatches, 'glsMatches');
   const [notifications, setNotifications] = useStickyState(initialNotifications, 'glsNotifications');
   const [activityLog, setActivityLog] = useStickyState(initialActivityLog, 'glsActivityLog');
 
@@ -148,14 +157,14 @@ const AppProvider = ({ children }) => {
       return { success: false, message: 'No account found with this email.' };
   };
   
-  const signup = (email) => {
+  const signup = (email, name) => {
       let player = players.find(p => p.email.toLowerCase() === email.toLowerCase());
       if (player) {
           return { success: false, message: 'An account with this email already exists.' };
       }
-      const newPlayer = { 
-          id: Date.now(), email, name: email.split('@')[0], role: 'Player', 
-          position: 'Unassigned', status: 'Active', teamId: null 
+      const newPlayer = {
+          id: Date.now(), email, name, role: 'Player',
+          position: 'Unassigned', status: 'Active', teamId: null
       };
       setPlayers(prev => [...prev, newPlayer]);
       const userData = { id: newPlayer.id, email: newPlayer.email, name: newPlayer.name, role: newPlayer.role };
@@ -222,9 +231,18 @@ const AppProvider = ({ children }) => {
   const deleteLeague = (id) => {
       const league = leagues.find(l => l.id === id);
       if(league) addActivity(`League removed: ${league.name}.`);
-      setLeagues(prev => prev.filter(t => t.id !== id));
+      setLeagues(prev => prev.filter(l => l.id !== id));
   };
-  
+
+  const addMatch = (match) => {
+      setMatches(prev => [...prev, { ...match, id: Date.now(), scoreA: 0, scoreB: 0 }]);
+      addActivity(`A new match was scheduled: ${match.teamA} vs ${match.teamB}.`);
+  };
+  const deleteMatch = (id) => {
+      addActivity(`Match cancelled.`);
+      setMatches(prev => prev.filter(m => m.id !== id));
+  };
+
   const addMessageToTeam = (teamId, message) => {
       setTeams(prevTeams => prevTeams.map(team => 
           team.id === teamId ? { ...team, messages: [...team.messages, message] } : team
@@ -242,6 +260,7 @@ const AppProvider = ({ children }) => {
     practices, addPractice, deletePractice,
     teams, addTeam, deleteTeam, addMessageToTeam,
     leagues, addLeague, deleteLeague,
+    matches, addMatch, deleteMatch,
     notifications, addNotification,
     activityLog,
   };
@@ -319,6 +338,7 @@ const Login = ({ onNavigate }) => {
 
 const Signup = ({ onNavigate }) => {
   const { signup } = useAppData();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -330,7 +350,7 @@ const Signup = ({ onNavigate }) => {
         setError('Please enter a valid email address.');
         return;
     }
-    const result = signup(email);
+    const result = signup(email, name);
     if(result.success) {
         onNavigate("/dashboard");
     } else {
@@ -347,6 +367,10 @@ const Signup = ({ onNavigate }) => {
         <h2 className="text-3xl font-bold text-center text-gray-800">Join the Action</h2>
         <form className="space-y-6" onSubmit={handleSubmit}>
           {error && <p className="text-sm text-center text-red-500">{error}</p>}
+          <div>
+            <label htmlFor="name-signup" className="text-sm font-medium text-gray-700">Full Name</label>
+            <input type="text" id="name-signup" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm" required/>
+          </div>
           <div>
             <label htmlFor="email-signup" className="text-sm font-medium text-gray-700">Email Address</label>
             <input type="email" id="email-signup" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm" required/>
@@ -635,6 +659,7 @@ const TeamChat = ({ team, onLeaveTeam }) => {
 const Teams = () => {
     const { user, players, teams, addTeam, deleteTeam, updatePlayerTeam } = useAppData();
     const [selectedTeamId, setSelectedTeamId] = useState(teams[0]?.id || null);
+    const [showChat, setShowChat] = useState(false);
     const [teamName, setTeamName] = useState('');
     const [sport, setSport] = useState('');
 
@@ -682,7 +707,16 @@ const Teams = () => {
             <div className="flex-1 min-h-[600px] lg:h-auto">
                 {selectedTeam ? (
                     isMemberOfSelectedTeam ? (
-                         <TeamChat team={selectedTeam} onLeaveTeam={() => updatePlayerTeam(user.id, null)} />
+                        showChat ? (
+                            <TeamChat team={selectedTeam} onLeaveTeam={() => updatePlayerTeam(user.id, null)} />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full p-6 bg-white rounded-lg shadow-md">
+                                <h3 className="text-xl font-bold text-gray-800">{selectedTeam.name}</h3>
+                                <p className="mt-2 text-gray-600">Members: {teamMembers.length}</p>
+                                <button onClick={() => setShowChat(true)} className="px-6 py-2 mt-4 text-white bg-blue-600 rounded-md hover:bg-blue-700">Open Chat</button>
+                                <button onClick={() => updatePlayerTeam(user.id, null)} className="px-6 py-2 mt-4 text-red-600 border border-red-600 rounded-md hover:bg-red-50">Leave Team</button>
+                            </div>
+                        )
                     ) : (
                          <div className="flex flex-col items-center justify-center h-full p-6 bg-white rounded-lg shadow-md">
                             <h3 className="text-xl font-bold text-gray-800">{selectedTeam.name}</h3>
@@ -690,7 +724,7 @@ const Teams = () => {
                             <button onClick={() => updatePlayerTeam(user.id, selectedTeam.id)} className="px-6 py-2 mt-4 text-white bg-green-600 rounded-md hover:bg-green-700">Join Team</button>
                          </div>
                     )
-                ) : 
+                ) :
                 <div className="flex items-center justify-center h-full bg-white rounded-lg shadow-md">
                     <p className="text-gray-500">Select a team to view or create a new one.</p>
                 </div>
@@ -713,18 +747,145 @@ const Practice = () => {
     return <CrudPage title="Practices" data={practices} onAdd={addPractice} onDelete={deletePractice} fields={fields} columns={columns} />
 };
 const Leagues = () => {
-    const { leagues, addLeague, deleteLeague } = useAppData();
-    const fields = [
-        { name: 'name', label: 'League Name', placeholder: 'e.g., Summer Cup' },
-        { name: 'sport', label: 'Sport', placeholder: 'e.g., Soccer' },
-        { name: 'startDate', label: 'Start Date', type: 'date' }
-    ];
-    const columns = [ { header: 'League Name', accessor: 'name' }, { header: 'Sport', accessor: 'sport' }, { header: 'Start Date', accessor: 'startDate' } ];
-    return <CrudPage title="Leagues" data={leagues} onAdd={addLeague} onDelete={deleteLeague} fields={fields} columns={columns} />
+    const { user, leagues, addLeague, deleteLeague, teams, matches, addMatch, deleteMatch } = useAppData();
+    const [selectedLeagueId, setSelectedLeagueId] = useState(leagues[0]?.id || null);
+    const [teamA, setTeamA] = useState('');
+    const [teamB, setTeamB] = useState('');
+    const [matchDate, setMatchDate] = useState('');
+    const [location, setLocation] = useState('');
+
+    const selectedLeague = leagues.find(l => l.id === selectedLeagueId);
+    const leagueMatches = matches.filter(m => m.leagueId === selectedLeagueId);
+
+    const handleAddLeague = (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+        const league = {
+            name: formData.get('name'),
+            sport: formData.get('sport'),
+            startDate: formData.get('startDate')
+        };
+        if (league.name && league.sport && league.startDate) {
+            addLeague(league);
+            form.reset();
+        }
+    };
+
+    const handleAddMatch = (e) => {
+        e.preventDefault();
+        if (teamA && teamB && matchDate && selectedLeagueId) {
+            addMatch({ leagueId: selectedLeagueId, teamA, teamB, matchDate, location });
+            setTeamA('');
+            setTeamB('');
+            setMatchDate('');
+            setLocation('');
+        }
+    };
+
+    return (
+        <div>
+            <h1 className="text-3xl font-bold text-gray-800">Leagues</h1>
+            {user.role === 'Admin' && (
+                <div className="p-6 my-6 bg-white rounded-lg shadow-md">
+                    <h2 className="text-xl font-semibold text-gray-700">Create New League</h2>
+                    <form className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2" onSubmit={handleAddLeague}>
+                        <div>
+                            <label htmlFor="league-name" className="text-sm font-medium text-gray-700">League Name</label>
+                            <input type="text" name="name" id="league-name" placeholder="e.g., Summer Cup" className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" required />
+                        </div>
+                        <div>
+                            <label htmlFor="league-sport" className="text-sm font-medium text-gray-700">Sport</label>
+                            <input type="text" name="sport" id="league-sport" placeholder="e.g., Soccer" className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" required />
+                        </div>
+                        <div>
+                            <label htmlFor="league-date" className="text-sm font-medium text-gray-700">Start Date</label>
+                            <input type="date" name="startDate" id="league-date" className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" required />
+                        </div>
+                        <div className="md:col-span-2">
+                            <button type="submit" className="px-4 py-2 text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Create League</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+            <div className="mt-6 space-y-4">
+                {leagues.map(league => (
+                    <div key={league.id} className="bg-white rounded-lg shadow-md">
+                        <div 
+                            className={`flex items-center justify-between p-4 cursor-pointer border-b ${selectedLeagueId === league.id ? 'bg-indigo-50' : ''}`}
+                            onClick={() => setSelectedLeagueId(league.id)}
+                        >
+                            <div>
+                                <p className="font-semibold text-gray-800">{league.name}</p>
+                                <p className="text-sm text-gray-500">Sport: {league.sport}</p>
+                                <p className="mt-2 text-xs text-gray-500">Starts: {new Date(league.startDate).toLocaleDateString()}</p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                {user.role === 'Admin' && <button onClick={(e) => { e.stopPropagation(); deleteLeague(league.id)}} className="px-2 py-1 text-red-500 hover:text-red-700"><TrashIcon className="w-4 h-4"/></button>}
+                                <span className="text-sm text-gray-500">{leagueMatches.length} matches</span>
+                            </div>
+                        </div>
+                        {selectedLeagueId === league.id && (
+                            <div className="p-4 space-y-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    {leagueMatches.map(match => (
+                                        <div key={match.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                            <div>
+                                                <p className="font-semibold text-gray-800">{match.teamA} vs {match.teamB}</p>
+                                                <p className="text-sm text-gray-500">{new Date(match.matchDate).toLocaleDateString()}</p>
+                                                {match.location && <p className="text-sm text-gray-500">{match.location}</p>}
+                                                <p className="text-xs text-gray-500">Score: {match.scoreA} - {match.scoreB}</p>
+                                            </div>
+                                            {user.role === 'Admin' && <button onClick={() => deleteMatch(match.id)} className="text-red-500 hover:text-red-700"><TrashIcon className="w-4 h-4"/></button>}
+                                        </div>
+                                    ))}
+                                    {leagueMatches.length === 0 && <p className="text-gray-500">No matches scheduled for this league.</p>}
+                                </div>
+                                {user.role === 'Admin' && (
+                                    <div className="pt-4 border-t">
+                                        <h3 className="text-lg font-semibold text-gray-700">Schedule New Match</h3>
+                                        <form className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2" onSubmit={handleAddMatch}>
+                                            <div>
+                                                <label htmlFor="teamA" className="text-sm font-medium text-gray-700">Team A</label>
+                                                <select id="teamA" value={teamA} onChange={(e) => setTeamA(e.target.value)} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" required>
+                                                    <option value="">Select Team A</option>
+                                                    {teams.map(team => <option key={team.id} value={team.name}>{team.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label htmlFor="teamB" className="text-sm font-medium text-gray-700">Team B</label>
+                                                <select id="teamB" value={teamB} onChange={(e) => setTeamB(e.target.value)} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" required>
+                                                    <option value="">Select Team B</option>
+                                                    {teams.map(team => <option key={team.id} value={team.name}>{team.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label htmlFor="matchDate" className="text-sm font-medium text-gray-700">Match Date</label>
+                                                <input type="datetime-local" id="matchDate" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" required />
+                                            </div>
+                                            <div>
+                                                <label htmlFor="location" className="text-sm font-medium text-gray-700">Location</label>
+                                                <input type="text" id="location" placeholder="e.g., Main Field" value={location} onChange={(e) => setLocation(e.target.value)} className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <button type="submit" className="px-4 py-2 text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Schedule Match</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))}
+                {leagues.length === 0 && <p className="text-gray-500">No leagues have been created yet.</p>}
+            </div>
+        </div>
+    );
 };
 
 const Layout = ({ children, currentPage, onNavigate }) => {
     const { user, logout } = useAppData();
+    const [menuOpen, setMenuOpen] = useState(false);
     const handleLogout = () => {
         logout();
         onNavigate("/");
@@ -742,7 +903,11 @@ const Layout = ({ children, currentPage, onNavigate }) => {
 
     return (
         <div className="flex h-screen bg-gray-100 font-sans">
-            <aside className="hidden w-64 bg-gray-800 text-gray-200 md:flex md:flex-col">
+            {/* Mobile Menu Overlay */}
+            {menuOpen && (
+                <div className="fixed inset-0 z-50 md:hidden">
+                    <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setMenuOpen(false)} />
+                    <aside className="w-64 bg-gray-800 text-gray-200 flex flex-col">
                 <div className="flex flex-col items-center justify-center h-24 bg-white p-2">
                      <img src="https://glsuniversity.ac.in/images/gls-logo-new.png" alt="GLS University Logo" className="h-12" />
                      <h1 className="text-lg font-bold text-gray-800 mt-2">Sports Hub</h1>
@@ -751,7 +916,7 @@ const Layout = ({ children, currentPage, onNavigate }) => {
                     {navItems.map(item => (
                         <a
                             key={item.path} href="#"
-                            onClick={(e) => { e.preventDefault(); onNavigate(item.path); }}
+                            onClick={(e) => { e.preventDefault(); onNavigate(item.path); setMenuOpen(false); }}
                             className={`flex items-center px-4 py-2 rounded-md transition-colors duration-200 ${ currentPage === item.path ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white' }`}
                         >
                             <item.icon className="w-5 h-5" />
@@ -760,9 +925,14 @@ const Layout = ({ children, currentPage, onNavigate }) => {
                     ))}
                 </nav>
             </aside>
+                </div>
+            )}
             <div className="flex flex-col flex-1">
                 <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-gray-200">
-                    <div/>
+                    <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden text-gray-700">
+                        <MenuIcon className="w-6 h-6" />
+                    </button>
+                    <div className="hidden md:block" />
                     <div className="flex items-center">
                         <span className="mr-3 text-gray-700">Welcome, <span className="font-semibold">{user?.name}</span></span>
                         <span className={`px-2 py-1 text-xs font-semibold leading-tight ${user?.role === 'Admin' ? 'text-indigo-700 bg-indigo-100' : 'text-gray-700 bg-gray-100'} rounded-full`}>{user?.role}</span>
@@ -825,4 +995,3 @@ function App() {
 }
 
 export default App;
-
