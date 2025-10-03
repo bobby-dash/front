@@ -145,10 +145,33 @@ const AppProvider = ({ children }) => {
     setActivityLog(prev => [{ id: Date.now(), message }, ...prev].slice(0, 5));
   };
 
-  const login = (email) => {
+
+  
+  const signup = (email, name, number) => {
+      let player = players.find(p => p.email.toLowerCase() === email.toLowerCase());
+      if (player) {
+          return { success: false, message: 'An account with this email already exists.' };
+      }
+      const newPlayer = {
+          id: Date.now(), email, name, number, role: 'Player',
+          position: 'Unassigned', status: 'Active', teamId: null
+      };
+      setPlayers(prev => [...prev, newPlayer]);
+      const userData = { id: newPlayer.id, email: newPlayer.email, name: newPlayer.name, number, role: newPlayer.role };
+      localStorage.setItem('glsUser', JSON.stringify(userData));
+      setUser(userData);
+      addActivity(`${newPlayer.name} created an account.`);
+      return { success: true };
+  };
+
+  const login = (email, number = '') => {
       const player = players.find(p => p.email.toLowerCase() === email.toLowerCase());
       if (player) {
-          const userData = { id: player.id, email: player.email, name: player.name, role: player.role };
+          // Update number if provided
+          if (number && number !== player.number) {
+              setPlayers(prev => prev.map(p => p.id === player.id ? { ...p, number } : p));
+          }
+          const userData = { id: player.id, email: player.email, name: player.name, number: number || player.number, role: player.role };
           localStorage.setItem('glsUser', JSON.stringify(userData));
           setUser(userData);
           addActivity(`${player.name} logged in.`);
@@ -156,35 +179,26 @@ const AppProvider = ({ children }) => {
       }
       return { success: false, message: 'No account found with this email.' };
   };
-  
-  const signup = (email, name) => {
-      let player = players.find(p => p.email.toLowerCase() === email.toLowerCase());
-      if (player) {
-          return { success: false, message: 'An account with this email already exists.' };
-      }
-      const newPlayer = {
-          id: Date.now(), email, name, role: 'Player',
-          position: 'Unassigned', status: 'Active', teamId: null
-      };
-      setPlayers(prev => [...prev, newPlayer]);
-      const userData = { id: newPlayer.id, email: newPlayer.email, name: newPlayer.name, role: newPlayer.role };
-      localStorage.setItem('glsUser', JSON.stringify(userData));
-      setUser(userData);
-      addActivity(`${newPlayer.name} created an account.`);
-      return { success: true };
-  };
 
   const logout = () => {
-    addActivity(`${user.name} logged out.`);
+    const loggedOutUser = user;
     localStorage.removeItem('glsUser');
     setUser(null);
+    if(loggedOutUser) addActivity(`${loggedOutUser.name} logged out.`);
   };
 
   const addPlayer = (player) => {
-      const newPlayer = { ...player, id: Date.now(), role: 'Player', teamId: null };
-      setPlayers(prev => [...prev, newPlayer]);
-      addActivity(`Admin added a new player: ${newPlayer.name}.`);
+      setPlayers(prev => [...prev, { ...player, id: Date.now() }]);
+      addActivity(`A new player was added: ${player.name}.`);
   };
+
+  const [darkMode, setDarkMode] = useStickyState(false, 'flyHighDarkMode');
+  const toggleDarkMode = () => setDarkMode(prev => !prev);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
+
   const deletePlayer = (id) => {
       const player = players.find(p => p.id === id);
       if (player) addActivity(`${player.name} was removed from the roster.`);
@@ -277,7 +291,7 @@ const validateEmail = (email) => {
 // --- Components ---
 const Login = ({ onNavigate }) => {
   const { login } = useAppData();
-  const [email, setEmail] = useState('dhairyaqwerty1@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -892,6 +906,7 @@ const Layout = ({ children, currentPage, onNavigate }) => {
     };
 
     const navItems = [
+        { path: null, label: "Menu", icon: MenuIcon, action: 'menu' },
         { path: "/dashboard", label: "Dashboard", icon: HomeIcon },
         { path: "/players", label: "Players", icon: UsersIcon },
         { path: "/practice", label: "Practice", icon: CalendarIcon },
@@ -928,7 +943,7 @@ const Layout = ({ children, currentPage, onNavigate }) => {
                 </div>
             )}
             <div className="flex flex-col flex-1">
-                <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-gray-200">
+                <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-gray-200 md:hidden">
                     <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden text-gray-700">
                         <MenuIcon className="w-6 h-6" />
                     </button>
@@ -941,9 +956,19 @@ const Layout = ({ children, currentPage, onNavigate }) => {
                         </button>
                     </div>
                 </header>
-                <main className="flex-1 p-6 overflow-y-auto">
+                <main className="flex-1 p-6 pb-20 overflow-y-auto">
                     {children}
                 </main>
+                <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-300 shadow-lg">
+                    <div className="flex justify-around py-3">
+                        {navItems.map(item => (
+                            <a key={item.path || item.label} href="#" onClick={(e) => { e.preventDefault(); if (item.action === 'menu') setMenuOpen(!menuOpen); else onNavigate(item.path); }} className={`flex flex-col items-center text-xs text-gray-600 hover:text-indigo-600 transition-colors p-2 ${currentPage === item.path ? 'text-indigo-600' : ''}`} >
+                                <item.icon className="w-5 h-5 mb-1" />
+                                <span>{item.label}</span>
+                            </a>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );
