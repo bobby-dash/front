@@ -162,31 +162,31 @@ const AppProvider = ({ children }) => {
 
 
   
-  const signup = (email, name, number) => {
+  const signup = (email, name, password) => {
       let player = players.find(p => p.email.toLowerCase() === email.toLowerCase());
       if (player) {
           return { success: false, message: 'An account with this email already exists.' };
       }
       const newPlayer = {
-          id: Date.now(), email, name, number, role: 'Player',
+          id: Date.now(), email, name, password, role: 'Player',
           position: 'Unassigned', status: 'Active', teamId: null
       };
       setPlayers(prev => [...prev, newPlayer]);
-      const userData = { id: newPlayer.id, email: newPlayer.email, name: newPlayer.name, number, role: newPlayer.role };
+      const userData = { id: newPlayer.id, email: newPlayer.email, name: newPlayer.name, role: newPlayer.role };
       localStorage.setItem('glsUser', JSON.stringify(userData));
       setUser(userData);
       addActivity(`${newPlayer.name} created an account.`);
       return { success: true };
   };
 
-  const login = (email, number = '') => {
+  const login = (email, password) => {
       const player = players.find(p => p.email.toLowerCase() === email.toLowerCase());
       if (player) {
-          // Update number if provided
-          if (number && number !== player.number) {
-              setPlayers(prev => prev.map(p => p.id === player.id ? { ...p, number } : p));
+          // Check password
+          if (player.password !== password) {
+              return { success: false, message: 'Incorrect password.' };
           }
-          const userData = { id: player.id, email: player.email, name: player.name, number: number || player.number, role: player.role };
+          const userData = { id: player.id, email: player.email, name: player.name, role: player.role };
           localStorage.setItem('glsUser', JSON.stringify(userData));
           setUser(userData);
           addActivity(`${player.name} logged in.`);
@@ -387,7 +387,11 @@ const Login = ({ onNavigate }) => {
         setError('Please enter a valid email address.');
         return;
     }
-    const result = login(email);
+    if (password.length < 6) {
+        setError('Password must be at least 6 characters long.');
+        return;
+    }
+    const result = login(email, password);
     if (result.success) {
       onNavigate("/dashboard");
     } else {
@@ -442,20 +446,24 @@ const Signup = ({ onNavigate }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError('');
-     if (!validateEmail(email)) {
-        setError('Please enter a valid email address.');
-        return;
-    }
-    const result = signup(email, name);
-    if(result.success) {
-        onNavigate("/dashboard");
-    } else {
-        setError(result.message);
-    }
-  };
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        setError('');
+        if (!validateEmail(email)) {
+            setError('Please enter a valid email address.');
+            return;
+        }
+        if (password.length < 6) {
+            setError('Password must be at least 6 characters long.');
+            return;
+        }
+        const result = signup(email, name, password);
+        if(result.success) {
+            onNavigate("/dashboard");
+        } else {
+            setError(result.message);
+        }
+    };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -1607,7 +1615,8 @@ const Layout = ({ children, currentPage, onNavigate }) => {
         onNavigate("/");
     };
 
-    const navItems = [
+    // Define navigation items based on user role
+    const adminNavItems = [
         { path: "/dashboard", label: "Dashboard", icon: HomeIcon },
         { path: "/players", label: "Players", icon: UsersIcon },
         { path: "/practice", label: "Practice", icon: CalendarIcon },
@@ -1617,6 +1626,13 @@ const Layout = ({ children, currentPage, onNavigate }) => {
         { path: "/settings", label: "Settings", icon: LifeBuoyIcon, adminOnly: true },
         { path: "/support", label: "Support", icon: LifeBuoyIcon },
     ];
+
+    const playerNavItems = [
+        { path: "/dashboard", label: "Dashboard", icon: HomeIcon },
+        { path: "/support", label: "Settings", icon: LifeBuoyIcon },
+    ];
+
+    const navItems = user?.role === 'Admin' ? adminNavItems : playerNavItems;
 
     return (
         <div className="flex h-screen bg-slate-950 font-sans">
@@ -2220,8 +2236,15 @@ const AppContainer = () => {
     if (!user) {
         content = currentPage === '/signup' ? <Signup onNavigate={handleNavigate} /> : <Login onNavigate={handleNavigate} />;
     } else {
-        const PageComponent = protectedPages[currentPage] || <Dashboard />;
-        content = <Layout currentPage={currentPage} onNavigate={handleNavigate}>{PageComponent}</Layout>;
+        // Role-based page access control
+        if (currentPage === '/players' && user.role !== 'Admin') {
+            // Redirect non-admin users away from players page
+            setCurrentPage('/dashboard');
+            content = <Layout currentPage={'/dashboard'} onNavigate={handleNavigate}>{<Dashboard />}</Layout>;
+        } else {
+            const PageComponent = protectedPages[currentPage] || <Dashboard />;
+            content = <Layout currentPage={currentPage} onNavigate={handleNavigate}>{PageComponent}</Layout>;
+        }
     }
 
     return content;
